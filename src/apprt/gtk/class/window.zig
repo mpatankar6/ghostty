@@ -833,6 +833,13 @@ pub const Window = extern struct {
                 self,
                 .{},
             );
+            _ = Surface.signals.init.connect(
+                surface,
+                *Self,
+                surfaceApplyWindowState,
+                self,
+                .{},
+            );
 
             // If we've never had a surface initialize yet, then we register
             // this signal. Its theoretically possible to launch multiple surfaces
@@ -1740,6 +1747,17 @@ pub const Window = extern struct {
                 @intCast(size.width),
                 @intCast(size.height),
             );
+        }
+    }
+
+    /// Apply window-level state to a newly initialized surface.
+    fn surfaceApplyWindowState(
+        surface: *Surface,
+        self: *Self,
+    ) callconv(.c) void {
+        const priv = self.private();
+        if (surface.core()) |core| {
+            core.setForceOpaqueBackground(priv.force_opaque_background);
         }
     }
 
