@@ -213,6 +213,24 @@ pub const Window = extern struct {
                 },
             );
         };
+
+        pub const @"force-opaque-background" = struct {
+            pub const name = "force-opaque-background";
+            const impl = gobject.ext.defineProperty(
+                name,
+                Self,
+                bool,
+                .{
+                    .default = false,
+                    .accessor = gobject.ext.privateFieldAccessor(
+                        Self,
+                        Private,
+                        &Private.offset,
+                        "force_opaque_background",
+                    ),
+                },
+            );
+        };
     };
 
     const Private = struct {
@@ -678,27 +696,12 @@ pub const Window = extern struct {
             );
         }
 
-        // Update all surfaces to reflect forced opaqueness value.
-        const numPages = priv.tab_view.getNPages();
-        for (0..@intCast(numPages)) |i| {
-            const pageChild = priv.tab_view
-                .getNthPage(@intCast(i))
-                .getChild();
-            const tab = gobject.ext.cast(Tab, pageChild) orelse continue;
-            const surfaceTree = tab.getSurfaceTree() orelse continue;
-            var it = surfaceTree.iterator();
-            while (it.next()) |entry| {
-                const surface = entry.view.core() orelse continue;
-                surface.setForceOpaqueBackground(priv.force_opaque_background);
-            }
-        }
-
         // Remainder uses the config
         const config = if (priv.config) |v| v.get() else return;
 
         // Only add the solid background class if we're opaque. This keeps
         // GTK's understanding of the window in line with what's being rendered
-        self.toggleCssClass("background", self.private().force_opaque_background or
+        self.toggleCssClass("background", priv.force_opaque_background or
             config.@"background-opacity" >= 1);
 
         // Apply class to color headerbar if window-theme is set to `ghostty` and
@@ -833,13 +836,6 @@ pub const Window = extern struct {
                 self,
                 .{},
             );
-            _ = Surface.signals.init.connect(
-                surface,
-                *Self,
-                surfaceApplyWindowState,
-                self,
-                .{},
-            );
 
             // If we've never had a surface initialize yet, then we register
             // this signal. Its theoretically possible to launch multiple surfaces
@@ -854,6 +850,15 @@ pub const Window = extern struct {
                     .{},
                 );
             }
+
+            // Connect init to bind window-level properties once core surface is ready.
+            _ = Surface.signals.init.connect(
+                surface,
+                *Self,
+                surfaceBindWindowProperties,
+                self,
+                .{},
+            );
         }
     }
 
@@ -936,6 +941,9 @@ pub const Window = extern struct {
     pub fn toggleBackgroundOpacity(self: *Self) void {
         const priv: *Private = self.private();
         priv.force_opaque_background = !priv.force_opaque_background;
+        self.as(gobject.Object).notifyByPspec(
+            properties.@"force-opaque-background".impl.param_spec,
+        );
         self.syncAppearance();
     }
 
@@ -1750,15 +1758,19 @@ pub const Window = extern struct {
         }
     }
 
-    /// Apply window-level state to a newly initialized surface.
-    fn surfaceApplyWindowState(
+    /// Called when a surface is fully initialized (core is set). Binds
+    /// window-level properties to the surface so they stay in sync.
+    fn surfaceBindWindowProperties(
         surface: *Surface,
         self: *Self,
     ) callconv(.c) void {
-        const priv = self.private();
-        if (surface.core()) |core| {
-            core.setForceOpaqueBackground(priv.force_opaque_background);
-        }
+        _ = gobject.Object.bindProperty(
+            self.as(gobject.Object),
+            "force-opaque-background",
+            surface.as(gobject.Object),
+            "force-opaque-background",
+            .{ .sync_create = true },
+        );
     }
 
     fn tabSplitTreeChanged(
@@ -2103,6 +2115,7 @@ pub const Window = extern struct {
                 properties.debug.impl,
                 properties.@"headerbar-visible".impl,
                 properties.@"quick-terminal".impl,
+                properties.@"force-opaque-background".impl,
                 properties.@"tabs-autohide".impl,
                 properties.@"tabs-visible".impl,
                 properties.@"tabs-wide".impl,

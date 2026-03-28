@@ -201,6 +201,26 @@ pub const Surface = extern struct {
             );
         };
 
+        pub const @"force-opaque-background" = struct {
+            pub const name = "force-opaque-background";
+            const impl = gobject.ext.defineProperty(
+                name,
+                Self,
+                bool,
+                .{
+                    .default = false,
+                    .accessor = gobject.ext.typedAccessor(
+                        Self,
+                        bool,
+                        .{
+                            .getter = getForceOpaqueBackground,
+                            .setter = setForceOpaqueBackground,
+                        },
+                    ),
+                },
+            );
+        };
+
         pub const @"mouse-shape" = struct {
             pub const name = "mouse-shape";
             const impl = gobject.ext.defineProperty(
@@ -569,6 +589,10 @@ pub const Surface = extern struct {
 
         /// Whether the mouse should be hidden or not as requested externally.
         mouse_hidden: bool = false,
+
+        /// Whether the background is forced to be fully opaque, overriding
+        /// the configured background-opacity.
+        force_opaque_background: bool = false,
 
         /// The URL that the mouse is currently hovering over.
         mouse_hover_url: ?[:0]const u8 = null,
@@ -2154,6 +2178,16 @@ pub const Surface = extern struct {
         self.as(gobject.Object).notifyByPspec(properties.@"mouse-hidden".impl.param_spec);
     }
 
+    pub fn getForceOpaqueBackground(self: *Self) bool {
+        return self.private().force_opaque_background;
+    }
+
+    pub fn setForceOpaqueBackground(self: *Self, force: bool) void {
+        self.private().force_opaque_background = force;
+        self.as(gobject.Object).notifyByPspec(properties.@"force-opaque-background".impl.param_spec);
+        if (self.core()) |coreSurface| coreSurface.setForceOpaqueBackground(force);
+    }
+
     pub fn setMouseHoverUrl(self: *Self, url: ?[:0]const u8) void {
         const priv = self.private();
         if (priv.mouse_hover_url) |v| glib.free(@ptrCast(@constCast(v)));
@@ -3588,6 +3622,7 @@ pub const Surface = extern struct {
                 properties.@"min-size".impl,
                 properties.@"mouse-shape".impl,
                 properties.@"mouse-hidden".impl,
+                properties.@"force-opaque-background".impl,
                 properties.@"mouse-hover-url".impl,
                 properties.pwd.impl,
                 properties.title.impl,
